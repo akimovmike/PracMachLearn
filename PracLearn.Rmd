@@ -58,7 +58,7 @@ trainData2 <- trainData2[,-removeCols1]
 Then, in several variables there are lots of NAs, so we will evaluate this in more 
 detail.
 
-```{r}
+```{r fig.path='./PracLearn_files/figure-html'}
 barplot(sapply(trainData2, function(x){sum(is.na(x))/length(x)}),
         ylab = "NA fraction", xlab = "Variables")
 ```
