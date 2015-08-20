@@ -1,0 +1,141 @@
+---
+title: "Practical Machine Learning Course Project"
+output: html_document
+---
+
+## Introduction
+
+The goal of this project is to predict the manner in which the people did the exercise. This is the "classe" variable in the training set. 
+
+The training data for this project are available [here](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv).
+
+The test data are available [here](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv).
+
+## Loading data
+
+First, we will load the caret package, which is required for the model optimization
+and data analysis.
+
+```{r}
+library(caret)
+library(knitr)
+```
+
+The next step is to read both train and test data sets:
+
+```{r cache=TRUE}
+trainData <- read.csv("pml-training.csv")
+testData <- read.csv("pml-testing.csv")
+```
+
+## Data processing
+
+Now we will split the training data set into the training and cross-validation 
+subset for the out-of-the-box error estimation. We will use 60% of the data
+for the training, and the remaining 40% for the cv.
+
+```{r}
+set.seed(123)
+cvIds <- createDataPartition(trainData$classe, p = 0.4, list = F)
+cvData <- trainData[cvIds,]
+trainData2 <- trainData[-cvIds,]
+```
+
+Now the data are ready for the analysis. First of all, we will look at their structure:
+
+```{r}
+str(trainData2)
+```
+
+From this pretty long output we can see, that the first five variables contain
+technical data and are bad predictors, so we will remove them. 
+
+```{r}
+removeCols1 <- c(1:5)
+trainData2 <- trainData2[,-removeCols1]
+```
+
+Then, in several variables there are lots of NAs, so we will evaluate this in more 
+detail.
+
+```{r}
+barplot(sapply(trainData2, function(x){sum(is.na(x))/length(x)}),
+        ylab = "NA fraction", xlab = "Variables")
+```
+
+From this plot it is clear, that several variables contain only NAs, and thus pose little value for the analysis. We will remove them as well using a custom function to generate an appropriate id list.
+
+```{r}
+removeNaF <- function(x){
+    out <- c()
+    l <- length(x[1,])
+    for(i in 1:l){
+        if(sum(is.na(x[,i]))/length(x[,i])>0.3){
+            out <- c(out, i)
+        }
+    }
+    out
+}
+removeCols2 <- removeNaF(trainData2)
+trainData2 <- trainData2[,-removeCols2]
+```
+
+Finally, we also remove the variables wit near-zero variance as poor predictors.
+
+```{r}
+removeCols3 <- nearZeroVar(trainData2)
+trainData2 <- trainData2[,-removeCols3]
+```
+
+## Model fitting
+
+To predict the manner of the excercise, we will use the random forest method, because
+it is well suited for classification tasks and has both low variance and low bias.
+For the model parameters optimization, we will use the 4-fold cross-validation.
+
+```{r cache=T}
+model <- train(classe~., data = trainData2, method = "rf", 
+               trControl=trainControl(method = "cv", number = 4))
+```
+
+To evaluate the prediction error of the model, we will use the cv dataset created earlier.
+We will apply for it all the variable removing steps from the training stage.
+
+```{r}
+cvData2 <- cvData[,-removeCols1]
+cvData2 <- cvData2[,-removeCols2]
+cvData2 <- cvData2[,-removeCols3]
+trainPred <- predict(model, cvData2)
+```
+
+The efficiency of the prediction is presented in the following table:
+
+```{r}
+confusionMatrix(trainPred, cvData2$classe) 
+```
+
+The prediction error rate on the test data set is 
+`r round((1 - confusionMatrix(trainPred, cvData2$classe)$overall["Accuracy"])*100,1)`%.
+
+## Output generation
+
+The final stage is the generation of predictions for the test dataset and packing them into
+separate files.
+
+```{r}
+testData2 <- testData[,-removeCols1]
+testData2 <- testData2[,-removeCols2]
+testData2 <- testData2[,-removeCols3]
+
+answers = predict(model, testData2)
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(answers)
+```
+
